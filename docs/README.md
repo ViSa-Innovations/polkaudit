@@ -68,6 +68,7 @@ Central index for developers, treasury voters, and ecosystem partners.
 | [12_MONTH_EXECUTION_PLAN.md](12_MONTH_EXECUTION_PLAN.md) | Annual funding and phases |
 | [GOVERNANCE_POLICY.md](GOVERNANCE_POLICY.md) | Project governance principles |
 | [SUSTAINABILITY.md](SUSTAINABILITY.md) | Long-term sustainability |
+| [SAAS_READINESS_GAP.md](SAAS_READINESS_GAP.md) | Multi-tenant / billing / Razorpay gap analysis |
 
 ---
 
