@@ -46,14 +46,15 @@ Use **`cloudbuild.backend-dashboard.yaml`** (not full `cloudbuild.yaml` — that
 
 | Variable | Value |
 |----------|--------|
-| `_REGION` | `asia-southeast1` (or your region) |
+| `_REGION` | `asia-south1` (Mumbai) |
+| `_AR_REPO` | `apps` |
 | `_API_KEY` | Same as `polkaudit-api-key` secret |
 
 ### Manual deploy
 
 ```bash
 gcloud builds submit --config=cloudbuild.backend-dashboard.yaml \
-  --substitutions=_REGION=asia-southeast1,_API_KEY=your-production-api-key
+  --substitutions=_REGION=asia-south1,_API_KEY=your-production-api-key
 ```
 
 ### Save URLs
@@ -62,10 +63,10 @@ After the build:
 
 ```bash
 export BACKEND_URL=$(gcloud run services describe polkaudit-backend \
-  --region=asia-southeast1 --format='value(status.url)')
+  --region=asia-south1 --format='value(status.url)')
 
 export DASHBOARD_URL=$(gcloud run services describe polkaudit-dashboard \
-  --region=asia-southeast1 --format='value(status.url)')
+  --region=asia-south1 --format='value(status.url)')
 
 echo "Backend:   $BACKEND_URL"
 echo "Dashboard: $DASHBOARD_URL"

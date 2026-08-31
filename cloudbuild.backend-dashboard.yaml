@@ -7,8 +7,10 @@
 # Prerequisites: see docs/GCP_CLOUD_BUILD.md and Secret Manager setup there.
 
 substitutions:
-  _REGION: asia-southeast1
-  _AR_REPO: polkaudit
+  _REGION: asia-south1
+  _AR_REPO: apps
+  _BACKEND_IMAGE: polkaudit-backend
+  _DASHBOARD_IMAGE: polkaudit-dashboard
   _BACKEND_SERVICE: polkaudit-backend
   _DASHBOARD_SERVICE: polkaudit-dashboard
   _API_KEY: dev-secret-key
@@ -17,8 +19,8 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 images:
-  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${SHORT_SHA}
-  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_BACKEND_IMAGE}:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}:${SHORT_SHA}
 
 steps:
   # ---------------------------------------------------------------------------
@@ -29,9 +31,9 @@ steps:
     args:
       - build
       - -t
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${SHORT_SHA}
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_BACKEND_IMAGE}:${SHORT_SHA}
       - -t
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:latest
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_BACKEND_IMAGE}:latest
       - -f
       - apps/backend/Dockerfile
       - apps/backend
@@ -41,7 +43,7 @@ steps:
     args:
       - push
       - --all-tags
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_BACKEND_IMAGE}
     waitFor: [build-backend]
 
   - id: deploy-backend
@@ -51,7 +53,7 @@ steps:
       - run
       - deploy
       - ${_BACKEND_SERVICE}
-      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${SHORT_SHA}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_BACKEND_IMAGE}:${SHORT_SHA}
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
@@ -94,8 +96,8 @@ steps:
         API_URL="$${BACKEND_URL}/api/v1"
         echo "Building dashboard with NEXT_PUBLIC_API_URL=$${API_URL}"
         docker build \
-          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${SHORT_SHA} \
-          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:latest \
+          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}:${SHORT_SHA} \
+          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}:latest \
           --build-arg NEXT_PUBLIC_API_URL="$${API_URL}" \
           --build-arg NEXT_PUBLIC_API_KEY=${_API_KEY} \
           -f apps/dashboard/Dockerfile \
@@ -107,7 +109,7 @@ steps:
     args:
       - push
       - --all-tags
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}
     waitFor: [build-dashboard]
 
   - id: deploy-dashboard
@@ -120,7 +122,7 @@ steps:
         BACKEND_URL=$(cat /workspace/backend_url.txt)
         INTERNAL_API_URL="$${BACKEND_URL}/api/v1"
         gcloud run deploy ${_DASHBOARD_SERVICE} \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${SHORT_SHA} \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}:${SHORT_SHA} \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \

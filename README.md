@@ -247,7 +247,7 @@ cp apps/dashboard/.env.example apps/dashboard/.env.local
 ```bash
 # 1) GCP — backend + dashboard only (no paid always-on indexer)
 gcloud builds submit --config=cloudbuild.backend-dashboard.yaml \
-  --substitutions=_REGION=asia-southeast1,_API_KEY=your-api-key
+  --substitutions=_REGION=asia-south1,_API_KEY=your-api-key
 
 # 2) Oracle VM — indexer (SSH to VM)
 sudo bash deploy/oracle/setup-indexer.sh
@@ -272,7 +272,7 @@ See **[docs/GCP_CLOUD_BUILD.md](docs/GCP_CLOUD_BUILD.md)**.
 
 ```bash
 gcloud builds submit --config=cloudbuild.yaml \
-  --substitutions=_REGION=asia-southeast1,_API_KEY=your-api-key
+  --substitutions=_REGION=asia-south1,_API_KEY=your-api-key
 ```
 
 ---
