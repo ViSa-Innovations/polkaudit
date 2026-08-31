@@ -1,35 +1,35 @@
 # Deploy PolkAudit with Cloud Build → Cloud Run
 
-**Default:** `cloudbuild.yaml` deploys **backend API only** to Cloud Run.
+**Default:** `cloudbuild.yaml` deploys **backend API + indexer** to Cloud Run.
 
-- **Indexer** — hosted separately (VM, etc.)
-- **Dashboard UI** — `apps/frontend` on Vercel (`demo.polkaudit.xyz`)
+- **Dashboard UI** — `apps/frontend` on Vercel (`app.polkaudit.xyz`)
 - **Landing** — `apps/landing` on Vercel (`polkaudit.xyz`)
+- **Backend-only** — use `cloudbuild.backend-dashboard.yaml` if you host the indexer elsewhere (VM)
 
-`cloudbuild.backend-dashboard.yaml` is identical to `cloudbuild.yaml` (kept for existing triggers).
-
-See **[HYBRID_DEPLOYMENT.md](HYBRID_DEPLOYMENT.md)** for indexer + backend wiring.
+See **[HYBRID_DEPLOYMENT.md](HYBRID_DEPLOYMENT.md)** for the Oracle VM indexer alternative.
 
 No local Docker required.
 
 ## Architecture on GCP
 
 ```text
-Cloud Build trigger
-    └── build → Artifact Registry (polkaudit-backend)
-        └── deploy → Cloud Run (polkaudit-backend)
-              │
-              ▼
-         Neon PostgreSQL (DATABASE_URL secret)
-              ▲
-         External indexer (VM / other host)
+Cloud Build trigger (cloudbuild.yaml)
+    ├── build → Artifact Registry (polkaudit-backend, polkaudit-indexer)
+    └── deploy → Cloud Run
+          ├── polkaudit-backend  (public, scale-to-zero)
+          └── polkaudit-indexer  (private IAM, min-instances=1)
+                    │
+                    ▼
+               Neon PostgreSQL (DATABASE_URL secret)
 ```
 
 | Service | Platform | Public? |
 |---------|----------|---------|
 | `polkaudit-backend` | Cloud Run, 512Mi, migrations on start | Yes (`/health`, `/docs`) |
-| Indexer | External (not Cloud Build) | No |
+| `polkaudit-indexer` | Cloud Run, 1Gi, min-instances=1, no CPU throttle | No (IAM only) |
 | Dashboard UI | Vercel (`apps/frontend`) | Yes |
+
+**Cost note:** The indexer is always-on (`min-instances=1`). Expect ongoing Cloud Run charges for that service.
 
 ---
 
@@ -129,7 +129,7 @@ gcloud secrets add-iam-policy-binding polkaudit-api-key \
 1. Console → **Cloud Build** → **Triggers** → **Create trigger**
 2. Connect your GitHub repo (`polkaudit`)
 3. Event: **Push to branch** → `main` (or your default)
-4. Configuration: **Cloud Build configuration file** → `cloudbuild.yaml` or `cloudbuild.backend-dashboard.yaml` (backend only)
+4. Configuration: **Cloud Build configuration file** → `cloudbuild.yaml` (backend + indexer) or `cloudbuild.backend-dashboard.yaml` (backend only)
 5. **Substitution variables** (optional overrides):
 
 | Variable | Example | Notes |
@@ -138,6 +138,8 @@ gcloud secrets add-iam-policy-binding polkaudit-api-key \
 | `_AR_REPO` | `apps` | Shared Docker repo in us-central1 (e.g. alongside `visahaw-api`) |
 | `_BACKEND_IMAGE` | `polkaudit-backend` | Image name inside `apps` repo |
 | `_BACKEND_SERVICE` | `polkaudit-backend` | Cloud Run service name |
+| `_INDEXER_IMAGE` | `polkaudit-indexer` | Indexer image name (`cloudbuild.yaml` only) |
+| `_INDEXER_SERVICE` | `polkaudit-indexer` | Indexer Cloud Run service (`cloudbuild.yaml` only) |
 
 6. Save and run the trigger (or push to `main`).
 
@@ -202,8 +204,9 @@ API_KEY=your-production-api-key
 
 | File | Purpose |
 |------|---------|
-| [cloudbuild.yaml](../cloudbuild.yaml) | Backend API → Cloud Run |
-| [cloudbuild.backend-dashboard.yaml](../cloudbuild.backend-dashboard.yaml) | Same as `cloudbuild.yaml` (legacy trigger filename) |
+| [cloudbuild.yaml](../cloudbuild.yaml) | Backend API + Indexer → Cloud Run |
+| [cloudbuild.backend-dashboard.yaml](../cloudbuild.backend-dashboard.yaml) | Backend API only (legacy / VM indexer) |
 | [apps/backend/Dockerfile](../apps/backend/Dockerfile) | API + Alembic on start |
+| [apps/indexer/Dockerfile](../apps/indexer/Dockerfile) | Always-on indexer worker |
 
 Local Docker Compose (optional): [docker-compose.yml](../docker-compose.yml)

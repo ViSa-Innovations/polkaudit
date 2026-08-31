@@ -264,17 +264,18 @@ Env reference: [env.hybrid.example](env.hybrid.example)
 
 ---
 
-## GCP Cloud Build → Cloud Run (full stack, optional)
+## GCP Cloud Build → Cloud Run (backend + indexer)
 
-Deploy **all three** services including indexer on Cloud Run (~$30+/mo for always-on indexer):
+Deploy **backend + indexer** on Cloud Run (indexer uses `min-instances=1` — ongoing cost):
 
 See **[docs/GCP_CLOUD_BUILD.md](docs/GCP_CLOUD_BUILD.md)**.
 
 ```bash
 gcloud builds submit --config=cloudbuild.yaml \
-  --substitutions=_REGION=us-central1,_API_KEY=your-api-key
+  --substitutions=_REGION=us-central1,_AR_REPO=apps
 ```
 
+Dashboard UI stays on Vercel (`apps/frontend`).
 ---
 
 ## Docker Compose (one command)
