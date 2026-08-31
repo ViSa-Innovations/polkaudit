@@ -1,15 +1,16 @@
 /**
  * PolkAudit API client for apps/frontend.
  *
- * - Server-side fetches use INTERNAL_API_URL when set (Cloud Run / docker networking).
- * - Client-side fetches use NEXT_PUBLIC_API_URL.
+ * - Prefer NEXT_PUBLIC_API_URL (production: https://api.polkaudit.xyz/api/v1).
+ * - INTERNAL_API_URL is optional (local Docker / special SSR); leave unset in Vercel
+ *   when using the api.polkaudit.xyz Cloud Run custom domain.
  * - Auth uses X-API-KEY (from env or browser override).
  */
 
 const STORAGE_KEY = 'polkaudit_api_key_override';
 
 function getApiBaseUrl(): string {
-  // Server Components / server runtime
+  // Optional override for SSR (e.g. docker-compose). Production: leave unset.
   if (typeof window === 'undefined' && process.env.INTERNAL_API_URL) {
     return process.env.INTERNAL_API_URL;
   }
