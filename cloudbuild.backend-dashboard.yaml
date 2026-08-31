@@ -1,31 +1,23 @@
-# PolkAudit — Cloud Build: backend + dashboard → Cloud Run
+# PolkAudit — Cloud Build: backend API → Cloud Run
 #
-# Recommended when you want to keep the **indexer free** (run it on a free VM instead).
+# Same as cloudbuild.yaml. Kept for existing Cloud Build triggers that reference
+# this filename. Indexer is external; dashboard UI is apps/frontend on Vercel.
 #
-# The backend container runs Alembic migrations on start.
-#
-# Prerequisites: see docs/GCP_CLOUD_BUILD.md and Secret Manager setup there.
+# Prerequisites: see docs/GCP_CLOUD_BUILD.md
 
 substitutions:
   _REGION: asia-south1
   _AR_REPO: apps
   _BACKEND_IMAGE: polkaudit-backend
-  _DASHBOARD_IMAGE: polkaudit-dashboard
   _BACKEND_SERVICE: polkaudit-backend
-  _DASHBOARD_SERVICE: polkaudit-dashboard
-  _API_KEY: dev-secret-key
 
 options:
   logging: CLOUD_LOGGING_ONLY
 
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_BACKEND_IMAGE}:${SHORT_SHA}
-  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}:${SHORT_SHA}
 
 steps:
-  # ---------------------------------------------------------------------------
-  # Backend
-  # ---------------------------------------------------------------------------
   - id: build-backend
     name: gcr.io/cloud-builders/docker
     args:
@@ -67,85 +59,15 @@ steps:
       - --set-env-vars=LOG_LEVEL=INFO
     waitFor: [push-backend]
 
-  - id: backend-url
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        URL=$(gcloud run services describe ${_BACKEND_SERVICE} \
-          --region=${_REGION} \
-          --platform=managed \
-          --format='value(status.url)')
-        echo "Backend URL: $${URL}"
-        echo "$${URL}" > /workspace/backend_url.txt
-    waitFor: [deploy-backend]
-
-  # ---------------------------------------------------------------------------
-  # Dashboard
-  # ---------------------------------------------------------------------------
-  - id: build-dashboard
-    name: gcr.io/cloud-builders/docker
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        BACKEND_URL=$(cat /workspace/backend_url.txt)
-        API_URL="$${BACKEND_URL}/api/v1"
-        echo "Building dashboard with NEXT_PUBLIC_API_URL=$${API_URL}"
-        docker build \
-          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}:${SHORT_SHA} \
-          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}:latest \
-          --build-arg NEXT_PUBLIC_API_URL="$${API_URL}" \
-          --build-arg NEXT_PUBLIC_API_KEY=${_API_KEY} \
-          -f apps/dashboard/Dockerfile \
-          apps/dashboard
-    waitFor: [backend-url]
-
-  - id: push-dashboard
-    name: gcr.io/cloud-builders/docker
-    args:
-      - push
-      - --all-tags
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}
-    waitFor: [build-dashboard]
-
-  - id: deploy-dashboard
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
-        BACKEND_URL=$(cat /workspace/backend_url.txt)
-        INTERNAL_API_URL="$${BACKEND_URL}/api/v1"
-        gcloud run deploy ${_DASHBOARD_SERVICE} \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_DASHBOARD_IMAGE}:${SHORT_SHA} \
-          --region=${_REGION} \
-          --platform=managed \
-          --allow-unauthenticated \
-          --port=8080 \
-          --cpu=1 \
-          --memory=512Mi \
-          --min-instances=0 \
-          --max-instances=10 \
-          --timeout=300 \
-          --set-secrets=API_KEY=polkaudit-api-key:latest \
-          --set-env-vars=INTERNAL_API_URL=$${INTERNAL_API_URL},NEXT_PUBLIC_API_KEY=${_API_KEY},LOG_LEVEL=INFO
-    waitFor: [push-dashboard]
-
   - id: summary
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
       - -c
       - |
-        echo "=== PolkAudit deployed (backend + dashboard) ==="
-        for SVC in ${_BACKEND_SERVICE} ${_DASHBOARD_SERVICE}; do
-          URL=$(gcloud run services describe "$$SVC" --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo "n/a")
-          echo "  $$SVC: $$URL"
-        done
-    waitFor: [deploy-dashboard]
-
+        echo "=== PolkAudit backend deployed ==="
+        URL=$(gcloud run services describe ${_BACKEND_SERVICE} \
+          --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo "n/a")
+        echo "  ${_BACKEND_SERVICE}: $${URL}"
+        echo "  Point apps/frontend (Vercel) at: $${URL}/api/v1"
+    waitFor: [deploy-backend]

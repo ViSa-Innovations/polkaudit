@@ -1,30 +1,35 @@
 # Deploy PolkAudit with Cloud Build → Cloud Run
 
-You have two deployment patterns:
+**Default:** `cloudbuild.yaml` deploys **backend API only** to Cloud Run.
 
-- **Hybrid (recommended):** `cloudbuild.backend-dashboard.yaml` + Oracle VM indexer — see **[HYBRID_DEPLOYMENT.md](HYBRID_DEPLOYMENT.md)**
-- **Full stack on Cloud Run:** `cloudbuild.yaml` (backend + indexer + dashboard; indexer costs ~$30+/mo always-on)
+- **Indexer** — hosted separately (VM, etc.)
+- **Dashboard UI** — `apps/frontend` on Vercel (`demo.polkaudit.xyz`)
+- **Landing** — `apps/landing` on Vercel (`polkaudit.xyz`)
 
-No local Docker required for either flow.
+`cloudbuild.backend-dashboard.yaml` is identical to `cloudbuild.yaml` (kept for existing triggers).
+
+See **[HYBRID_DEPLOYMENT.md](HYBRID_DEPLOYMENT.md)** for indexer + backend wiring.
+
+No local Docker required.
 
 ## Architecture on GCP
 
 ```text
 Cloud Build trigger
-    ├── build → Artifact Registry (backend, indexer, dashboard)
-    └── deploy → Cloud Run (3 services)
+    └── build → Artifact Registry (polkaudit-backend)
+        └── deploy → Cloud Run (polkaudit-backend)
               │
               ▼
          Neon PostgreSQL (DATABASE_URL secret)
               ▲
-         Indexer (min 1 instance, no CPU throttling)
+         External indexer (VM / other host)
 ```
 
-| Service | Cloud Run settings | Public? |
-|---------|-------------------|---------|
-| `polkaudit-backend` | 512Mi, migrations on start | Yes (`/health`, `/docs`) |
-| `polkaudit-indexer` | 1Gi, min-instances=1, timeout 3600s | No (private) |
-| `polkaudit-dashboard` | 512Mi, `INTERNAL_API_URL` → backend | Yes |
+| Service | Platform | Public? |
+|---------|----------|---------|
+| `polkaudit-backend` | Cloud Run, 512Mi, migrations on start | Yes (`/health`, `/docs`) |
+| Indexer | External (not Cloud Build) | No |
+| Dashboard UI | Vercel (`apps/frontend`) | Yes |
 
 ---
 
@@ -52,8 +57,6 @@ Images are stored as:
 
 ```text
 asia-south1-docker.pkg.dev/PROJECT_ID/apps/polkaudit-backend
-asia-south1-docker.pkg.dev/PROJECT_ID/apps/polkaudit-dashboard
-asia-south1-docker.pkg.dev/PROJECT_ID/apps/polkaudit-indexer   # full stack only
 ```
 
 If `apps` does not exist in Mumbai yet:
@@ -126,9 +129,7 @@ gcloud secrets add-iam-policy-binding polkaudit-api-key \
 1. Console → **Cloud Build** → **Triggers** → **Create trigger**
 2. Connect your GitHub repo (`polkaudit`)
 3. Event: **Push to branch** → `main` (or your default)
-4. Configuration: **Cloud Build configuration file** → one of:
-   - `cloudbuild.yaml` (full stack: backend + indexer + dashboard)
-   - `cloudbuild.backend-dashboard.yaml` (free indexer: backend + dashboard only)
+4. Configuration: **Cloud Build configuration file** → `cloudbuild.yaml` or `cloudbuild.backend-dashboard.yaml` (backend only)
 5. **Substitution variables** (optional overrides):
 
 | Variable | Example | Notes |
@@ -136,12 +137,7 @@ gcloud secrets add-iam-policy-binding polkaudit-api-key \
 | `_REGION` | `asia-south1` | Mumbai — same as Artifact Registry and Cloud Run |
 | `_AR_REPO` | `apps` | Shared Docker repo in Mumbai (e.g. alongside `visahaw-api`) |
 | `_BACKEND_IMAGE` | `polkaudit-backend` | Image name inside `apps` repo |
-| `_DASHBOARD_IMAGE` | `polkaudit-dashboard` | Image name inside `apps` repo |
-| `_INDEXER_IMAGE` | `polkaudit-indexer` | Full stack only (`cloudbuild.yaml`) |
-| `_API_KEY` | (your key) | Must match `polkaudit-api-key` secret; baked into dashboard build |
 | `_BACKEND_SERVICE` | `polkaudit-backend` | Cloud Run service name |
-| `_INDEXER_SERVICE` | `polkaudit-indexer` | Only for `cloudbuild.yaml` (full stack) |
-| `_DASHBOARD_SERVICE` | `polkaudit-dashboard` | Cloud Run service name |
 
 6. Save and run the trigger (or push to `main`).
 
@@ -149,11 +145,7 @@ gcloud secrets add-iam-policy-binding polkaudit-api-key \
 
 ```bash
 gcloud builds submit --config=cloudbuild.yaml \
-  --substitutions=_REGION=asia-south1,_API_KEY=your-production-api-key
-
-# Or (free indexer: deploy only backend + dashboard)
-gcloud builds submit --config=cloudbuild.backend-dashboard.yaml \
-  --substitutions=_REGION=asia-south1,_API_KEY=your-production-api-key
+  --substitutions=_REGION=asia-south1,_AR_REPO=apps
 ```
 
 ---
@@ -172,36 +164,12 @@ curl -s -H "X-API-KEY: your-production-api-key" \
   "$BACKEND_URL/api/v1/stats/overview"
 ```
 
-Dashboard URL:
+Set the same API URL and key on **Vercel** (`apps/frontend`):
 
-```bash
-gcloud run services describe polkaudit-dashboard \
-  --region=asia-south1 --format='value(status.url)'
-```
-
-Indexer (private — needs identity token):
-
-```bash
-INDEXER_URL=$(gcloud run services describe polkaudit-indexer \
-  --region=asia-south1 --format='value(status.url)')
-
-curl -s -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
-  "$INDEXER_URL/health"
-```
-
----
-
-## Indexer on Cloud Run notes
-
-- **`min-instances: 1`** + **`--no-cpu-throttling`** keep the block scanner running.
-- **`max-instances: 1`** avoids duplicate writers to the same DB.
-- Listens on **`PORT`** (8080) for `/health` and `/metrics`.
-- For production RPC, set `SUBSTRATE_RPC_URL` in the deploy step or add a Secret Manager secret and `--set-secrets` in `cloudbuild.yaml`.
-
-Optional demo env (add to `deploy-indexer` `--set-env-vars`):
-
-```text
-INDEXER_START_BLOCK=31387000,INDEXER_CATCHUP_WINDOW=2000
+```env
+NEXT_PUBLIC_API_URL=https://your-backend-url.run.app/api/v1
+NEXT_PUBLIC_API_KEY=your-production-api-key
+API_KEY=your-production-api-key
 ```
 
 ---
@@ -210,8 +178,9 @@ INDEXER_START_BLOCK=31387000,INDEXER_CATCHUP_WINDOW=2000
 
 | Resource | Estimate |
 |----------|----------|
-| Cloud Run backend/dashboard | Low at demo traffic |
-| Cloud Run indexer (always on) | ~$30–50/mo (1 vCPU, 1Gi, min 1 instance) |
+| Cloud Run backend | Low at demo traffic |
+| External indexer (VM) | Free tier / existing host |
+| Vercel frontend + landing | Free tier typical |
 | Neon | Free tier / existing plan |
 | Cloud Build | 120 free build-min/day |
 
@@ -224,9 +193,8 @@ INDEXER_START_BLOCK=31387000,INDEXER_CATCHUP_WINDOW=2000
 | `Permission denied` on deploy | Cloud Build SA needs `run.admin` + `iam.serviceAccountUser` |
 | `Secret not found` | Create secrets; grant accessor to Cloud Run SA |
 | Backend 503 / DB errors | Check `polkaudit-database-url` (sslmode for Neon) |
-| Dashboard API errors | Re-run build after backend URL changes; check `INTERNAL_API_URL` |
-| Indexer not indexing | Logs in Cloud Run → indexer service; verify RPC URL |
-| `substrateinterface` decode fails | Image build verifies package; rebuild indexer image |
+| Vercel dashboard API errors | Check `NEXT_PUBLIC_API_URL` points to Cloud Run backend |
+| Stats stay at zero | External indexer not running or wrong `DATABASE_URL` |
 
 ---
 
@@ -234,10 +202,8 @@ INDEXER_START_BLOCK=31387000,INDEXER_CATCHUP_WINDOW=2000
 
 | File | Purpose |
 |------|---------|
-| [cloudbuild.yaml](../cloudbuild.yaml) | Build + deploy pipeline |
-| [cloudbuild.backend-dashboard.yaml](../cloudbuild.backend-dashboard.yaml) | Backend + dashboard only (recommended for free indexer) |
+| [cloudbuild.yaml](../cloudbuild.yaml) | Backend API → Cloud Run |
+| [cloudbuild.backend-dashboard.yaml](../cloudbuild.backend-dashboard.yaml) | Same as `cloudbuild.yaml` (legacy trigger filename) |
 | [apps/backend/Dockerfile](../apps/backend/Dockerfile) | API + Alembic on start |
-| [apps/indexer/Dockerfile](../apps/indexer/Dockerfile) | Block scanner worker |
-| [apps/dashboard/Dockerfile](../apps/dashboard/Dockerfile) | Next.js production build |
 
 Local Docker Compose (optional): [docker-compose.yml](../docker-compose.yml)
