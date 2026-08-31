@@ -3,16 +3,16 @@
 # Indexer: hosted separately (VM / external). UI: apps/frontend on Vercel.
 #
 # Prerequisites (one-time): see docs/GCP_CLOUD_BUILD.md
-#   - Artifact Registry repo (default: shared `apps` in asia-south1)
+#   - Artifact Registry repo (default: shared `apps` in us-central1)
 #   - Secret Manager: polkaudit-database-url, polkaudit-api-key
 #
 # Trigger substitutions (override in Cloud Build trigger UI):
-#   _REGION          e.g. asia-south1 (Mumbai)
-#   _AR_REPO         e.g. apps (shared Artifact Registry repo in Mumbai)
+#   _REGION          e.g. us-central1
+#   _AR_REPO         e.g. apps (shared Artifact Registry repo)
 #   _BACKEND_IMAGE   e.g. polkaudit-backend
 
 substitutions:
-  _REGION: asia-south1
+  _REGION: us-central1
   _AR_REPO: apps
   _BACKEND_IMAGE: polkaudit-backend
   _BACKEND_SERVICE: polkaudit-backend
