@@ -6,7 +6,7 @@
 # Prerequisites: see docs/GCP_CLOUD_BUILD.md
 
 substitutions:
-  _REGION: asia-south1
+  _REGION: us-central1
   _AR_REPO: apps
   _BACKEND_IMAGE: polkaudit-backend
   _BACKEND_SERVICE: polkaudit-backend

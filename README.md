@@ -247,7 +247,7 @@ cp apps/dashboard/.env.example apps/dashboard/.env.local
 ```bash
 # 1) GCP — backend + dashboard only (no paid always-on indexer)
 gcloud builds submit --config=cloudbuild.backend-dashboard.yaml \
-  --substitutions=_REGION=asia-south1,_API_KEY=your-api-key
+  --substitutions=_REGION=us-central1,_API_KEY=your-api-key
 
 # 2) Oracle VM — indexer (SSH to VM)
 sudo bash deploy/oracle/setup-indexer.sh
@@ -272,7 +272,7 @@ See **[docs/GCP_CLOUD_BUILD.md](docs/GCP_CLOUD_BUILD.md)**.
 
 ```bash
 gcloud builds submit --config=cloudbuild.yaml \
-  --substitutions=_REGION=asia-south1,_API_KEY=your-api-key
+  --substitutions=_REGION=us-central1,_API_KEY=your-api-key
 ```
 
 ---
@@ -613,7 +613,8 @@ Backend and indexer normalize URLs and pass `ssl=require` for `neon.tech` hosts.
 | [docs/TREASURY_SUMMARY.md](docs/TREASURY_SUMMARY.md) | One-page treasury overview for voters |
 | [docs/TREASURY_SUBMISSION_CHECKLIST.md](docs/TREASURY_SUBMISSION_CHECKLIST.md) | Treasury pre-submit checklist |
 | [docs/TREASURY_REVIEWER_FAQ.md](docs/TREASURY_REVIEWER_FAQ.md) | Treasury voter Q&A |
-| [docs/POLKASSEMBLY_DISCUSSION_POST.md](docs/POLKASSEMBLY_DISCUSSION_POST.md) | Polkassembly Discussion post draft |
+| [docs/POLKASSEMBLY_DISCUSSION_POST.md](docs/POLKASSEMBLY_DISCUSSION_POST.md) | Legacy Polkassembly discussion draft (archived) |
+| [docs/POLKADOT_FORUM_POST.md](docs/POLKADOT_FORUM_POST.md) | Polkadot Forum governance topic draft |
 | [deploy/oracle/README.md](deploy/oracle/README.md) | Oracle VM setup script + systemd |
 | [docs/assets/README.md](docs/assets/README.md) | Screenshot & export capture guide |
 

@@ -25,7 +25,8 @@ Central index for developers, treasury voters, and ecosystem partners.
 | [TREASURY_SUMMARY.md](TREASURY_SUMMARY.md) | One-page treasury overview for voters |
 | [TREASURY_SUBMISSION_CHECKLIST.md](TREASURY_SUBMISSION_CHECKLIST.md) | Pre-submit checklist (demo → discussion → referendum) |
 | [TREASURY_REVIEWER_FAQ.md](TREASURY_REVIEWER_FAQ.md) | Voter and commenter Q&A |
-| [POLKASSEMBLY_DISCUSSION_POST.md](POLKASSEMBLY_DISCUSSION_POST.md) | Copy-paste draft for Polkassembly Discussion |
+| [POLKASSEMBLY_DISCUSSION_POST.md](POLKASSEMBLY_DISCUSSION_POST.md) | Legacy Polkassembly discussion draft (archived) |
+| [POLKADOT_FORUM_POST.md](POLKADOT_FORUM_POST.md) | Polkadot Forum governance topic draft |
 | [DEMO_HOSTING_GUIDE.md](DEMO_HOSTING_GUIDE.md) | Public demo launch before posting discussion |
 | [PUBLIC_PRIVATE_REPO_GUIDE.md](PUBLIC_PRIVATE_REPO_GUIDE.md) | What to publish vs keep private |
 | [WEEKLY_REPORT.md](WEEKLY_REPORT.md) | Progress report with evidence links |

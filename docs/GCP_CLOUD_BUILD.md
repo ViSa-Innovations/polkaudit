@@ -35,7 +35,7 @@ Cloud Build trigger
 
 ## One-time GCP setup
 
-Replace `PROJECT_ID`. Default region in yaml: **`asia-south1` (Mumbai)** — must match your Cloud Build trigger region and Artifact Registry location.
+Replace `PROJECT_ID`. Default region in yaml: **`us-central1`** — must match your Cloud Build trigger region and Artifact Registry location.
 
 ### 1. Enable APIs
 
@@ -51,21 +51,21 @@ gcloud services enable \
 
 ### 2. Artifact Registry repository
 
-PolkAudit uses the existing shared Docker repo **`apps`** in **Mumbai (`asia-south1`)** — same registry as `visahaw-api` and other ViSa apps. **Do not create a separate `polkaudit` repo** unless you want isolation.
+PolkAudit uses the existing shared Docker repo **`apps`** in **`us-central1`** — same registry as `visahaw-api` and other ViSa apps. **Do not create a separate `polkaudit` repo** unless you want isolation.
 
 Images are stored as:
 
 ```text
-asia-south1-docker.pkg.dev/PROJECT_ID/apps/polkaudit-backend
+us-central1-docker.pkg.dev/PROJECT_ID/apps/polkaudit-backend
 ```
 
-If `apps` does not exist in Mumbai yet:
+If `apps` does not exist in us-central1 yet:
 
 ```bash
 gcloud artifacts repositories create apps \
   --repository-format=docker \
-  --location=asia-south1 \
-  --description="Shared application container images (Mumbai)"
+  --location=us-central1 \
+  --description="Shared application container images"
 ```
 
 ### 3. Secret Manager
@@ -134,8 +134,8 @@ gcloud secrets add-iam-policy-binding polkaudit-api-key \
 
 | Variable | Example | Notes |
 |----------|---------|--------|
-| `_REGION` | `asia-south1` | Mumbai — same as Artifact Registry and Cloud Run |
-| `_AR_REPO` | `apps` | Shared Docker repo in Mumbai (e.g. alongside `visahaw-api`) |
+| `_REGION` | `us-central1` | Same as Artifact Registry and Cloud Run |
+| `_AR_REPO` | `apps` | Shared Docker repo in us-central1 (e.g. alongside `visahaw-api`) |
 | `_BACKEND_IMAGE` | `polkaudit-backend` | Image name inside `apps` repo |
 | `_BACKEND_SERVICE` | `polkaudit-backend` | Cloud Run service name |
 
@@ -145,7 +145,7 @@ gcloud secrets add-iam-policy-binding polkaudit-api-key \
 
 ```bash
 gcloud builds submit --config=cloudbuild.yaml \
-  --substitutions=_REGION=asia-south1,_AR_REPO=apps
+  --substitutions=_REGION=us-central1,_AR_REPO=apps
 ```
 
 ---
@@ -156,7 +156,7 @@ The build prints service URLs. Typical checks:
 
 ```bash
 BACKEND_URL=$(gcloud run services describe polkaudit-backend \
-  --region=asia-south1 --format='value(status.url)')
+  --region=us-central1 --format='value(status.url)')
 
 curl -s "$BACKEND_URL/health"
 

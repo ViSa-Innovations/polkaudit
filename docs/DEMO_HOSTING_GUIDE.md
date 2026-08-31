@@ -124,17 +124,17 @@ Use:
 
 ```bash
 gcloud builds submit --config=cloudbuild.backend-dashboard.yaml \
-  --substitutions=_REGION=asia-south1,_API_KEY=your-production-api-key
+  --substitutions=_REGION=us-central1,_API_KEY=your-production-api-key
 ```
 
 After deploy, save the Cloud Run URLs:
 
 ```bash
 gcloud run services describe polkaudit-backend \
-  --region=asia-south1 --format='value(status.url)'
+  --region=us-central1 --format='value(status.url)'
 
 gcloud run services describe polkaudit-dashboard \
-  --region=asia-south1 --format='value(status.url)'
+  --region=us-central1 --format='value(status.url)'
 ```
 
 ### Step 4: start the Oracle indexer
