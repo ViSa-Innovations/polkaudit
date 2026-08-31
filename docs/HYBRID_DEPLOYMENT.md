@@ -35,8 +35,9 @@ No Docker required on your laptop. Cloud Build builds images; Oracle VM runs `./
 
 ## Part 1 — GCP: backend + dashboard only
 
-Use **`cloudbuild.backend-dashboard.yaml`** for backend-only when the indexer runs on a VM.
-Use **`cloudbuild.yaml`** when you want both backend + indexer on Cloud Run (indexer is always-on / paid).
+Use **`cloudbuild.yaml`** for the backend Service.
+Use **`cloudbuild.indexer-worker-pool.yaml`** for the indexer on a Cloud Run Worker Pool (recommended managed option).
+Use **`cloudbuild.backend-dashboard.yaml`** only as a legacy backend-only filename when the indexer runs on a VM.
 
 ### Cloud Build trigger
 

@@ -1,10 +1,15 @@
 # Deploy PolkAudit with Cloud Build → Cloud Run
 
-**Default:** `cloudbuild.yaml` deploys **backend API + indexer** to Cloud Run.
+Use **two triggers** (recommended):
+
+| Config file | Deploys |
+|-------------|---------|
+| `cloudbuild.yaml` | Backend API → Cloud Run **Service** |
+| `cloudbuild.indexer-worker-pool.yaml` | Indexer → Cloud Run **Worker Pool** |
 
 - **Dashboard UI** — `apps/frontend` on Vercel (`app.polkaudit.xyz`)
 - **Landing** — `apps/landing` on Vercel (`polkaudit.xyz`)
-- **Backend-only** — use `cloudbuild.backend-dashboard.yaml` if you host the indexer elsewhere (VM)
+- **Legacy** — `cloudbuild.backend-dashboard.yaml` is backend-only (same as `cloudbuild.yaml`)
 
 See **[HYBRID_DEPLOYMENT.md](HYBRID_DEPLOYMENT.md)** for the Oracle VM indexer alternative.
 
@@ -13,23 +18,25 @@ No local Docker required.
 ## Architecture on GCP
 
 ```text
-Cloud Build trigger (cloudbuild.yaml)
-    ├── build → Artifact Registry (polkaudit-backend, polkaudit-indexer)
-    └── deploy → Cloud Run
-          ├── polkaudit-backend  (public, scale-to-zero)
-          └── polkaudit-indexer  (private IAM, min-instances=1)
-                    │
-                    ▼
-               Neon PostgreSQL (DATABASE_URL secret)
+Trigger A: cloudbuild.yaml
+    └── Cloud Run Service: polkaudit-backend (public, scale-to-zero)
+
+Trigger B: cloudbuild.indexer-worker-pool.yaml
+    └── Cloud Run Worker Pool: polkaudit-indexer (instances=1, no URL)
+              │
+              ▼
+         Neon PostgreSQL (DATABASE_URL secret)
 ```
 
-| Service | Platform | Public? |
-|---------|----------|---------|
-| `polkaudit-backend` | Cloud Run, 512Mi, migrations on start | Yes (`/health`, `/docs`) |
-| `polkaudit-indexer` | Cloud Run, 1Gi, min-instances=1, no CPU throttle | No (IAM only) |
+| Resource | Platform | Public? |
+|----------|----------|---------|
+| `polkaudit-backend` | Cloud Run Service, 512Mi | Yes (`/health`, `/docs`) |
+| `polkaudit-indexer` | Cloud Run Worker Pool, 1Gi, instances=1 | No (no endpoint) |
 | Dashboard UI | Vercel (`apps/frontend`) | Yes |
 
-**Cost note:** The indexer is always-on (`min-instances=1`). Expect ongoing Cloud Run charges for that service.
+**Cost note:** The indexer worker pool keeps a fixed instance count (default 1). Expect ongoing Cloud Run charges for that worker.
+
+**Name conflict:** A Worker Pool cannot reuse the name of an existing Cloud Run **Service**. If you previously deployed `polkaudit-indexer` as a Service, delete that Service (or set `_INDEXER_WORKER_POOL` to another name) before running the worker-pool trigger.
 
 ---
 
@@ -124,29 +131,48 @@ gcloud secrets add-iam-policy-binding polkaudit-api-key \
 
 ---
 
-## Cloud Build trigger
+## Cloud Build triggers
+
+### Trigger A — backend (`cloudbuild.yaml`)
 
 1. Console → **Cloud Build** → **Triggers** → **Create trigger**
 2. Connect your GitHub repo (`polkaudit`)
 3. Event: **Push to branch** → `main` (or your default)
-4. Configuration: **Cloud Build configuration file** → `cloudbuild.yaml` (backend + indexer) or `cloudbuild.backend-dashboard.yaml` (backend only)
-5. **Substitution variables** (optional overrides):
+4. Configuration file: **`cloudbuild.yaml`**
+5. Optional substitutions:
 
 | Variable | Example | Notes |
 |----------|---------|--------|
 | `_REGION` | `us-central1` | Same as Artifact Registry and Cloud Run |
-| `_AR_REPO` | `apps` | Shared Docker repo in us-central1 (e.g. alongside `visahaw-api`) |
+| `_AR_REPO` | `apps` | Shared Docker repo in us-central1 |
 | `_BACKEND_IMAGE` | `polkaudit-backend` | Image name inside `apps` repo |
 | `_BACKEND_SERVICE` | `polkaudit-backend` | Cloud Run service name |
-| `_INDEXER_IMAGE` | `polkaudit-indexer` | Indexer image name (`cloudbuild.yaml` only) |
-| `_INDEXER_SERVICE` | `polkaudit-indexer` | Indexer Cloud Run service (`cloudbuild.yaml` only) |
 
-6. Save and run the trigger (or push to `main`).
+### Trigger B — indexer worker pool (`cloudbuild.indexer-worker-pool.yaml`)
+
+1. Create a **second** trigger on the same repo/branch
+2. Configuration file: **`cloudbuild.indexer-worker-pool.yaml`**
+3. Optional substitutions:
+
+| Variable | Example | Notes |
+|----------|---------|--------|
+| `_REGION` | `us-central1` | Same region as backend |
+| `_AR_REPO` | `apps` | Shared Docker repo |
+| `_INDEXER_IMAGE` | `polkaudit-indexer` | Image name |
+| `_INDEXER_WORKER_POOL` | `polkaudit-indexer` | Must not collide with a Service name |
+| `_INDEXER_INSTANCES` | `1` | Keep at 1 |
+
+6. Save and run each trigger (or push to `main` if both listen to the same branch).
 
 ### Manual run (no push)
 
 ```bash
+# Backend Service
 gcloud builds submit --config=cloudbuild.yaml \
+  --substitutions=_REGION=us-central1,_AR_REPO=apps
+
+# Indexer Worker Pool
+gcloud builds submit --config=cloudbuild.indexer-worker-pool.yaml \
   --substitutions=_REGION=us-central1,_AR_REPO=apps
 ```
 
@@ -180,8 +206,9 @@ API_KEY=your-production-api-key
 
 | Resource | Estimate |
 |----------|----------|
-| Cloud Run backend | Low at demo traffic |
-| External indexer (VM) | Free tier / existing host |
+| Cloud Run backend (Service) | Low at demo traffic |
+| Cloud Run indexer (Worker Pool, instances=1) | Always-on — main ongoing cost |
+| External indexer (VM) | Free tier / existing host (alternative) |
 | Vercel frontend + landing | Free tier typical |
 | Neon | Free tier / existing plan |
 | Cloud Build | 120 free build-min/day |
@@ -196,7 +223,8 @@ API_KEY=your-production-api-key
 | `Secret not found` | Create secrets; grant accessor to Cloud Run SA |
 | Backend 503 / DB errors | Check `polkaudit-database-url` (sslmode for Neon) |
 | Vercel dashboard API errors | Check `NEXT_PUBLIC_API_URL` points to Cloud Run backend |
-| Stats stay at zero | External indexer not running or wrong `DATABASE_URL` |
+| Stats stay at zero | Indexer worker pool not running, wrong `DATABASE_URL`, or old Service indexer still conflicting |
+| Worker pool name conflict | Delete/rename existing Service `polkaudit-indexer`, or set `_INDEXER_WORKER_POOL` to a new name |
 
 ---
 
@@ -204,9 +232,10 @@ API_KEY=your-production-api-key
 
 | File | Purpose |
 |------|---------|
-| [cloudbuild.yaml](../cloudbuild.yaml) | Backend API + Indexer → Cloud Run |
-| [cloudbuild.backend-dashboard.yaml](../cloudbuild.backend-dashboard.yaml) | Backend API only (legacy / VM indexer) |
+| [cloudbuild.yaml](../cloudbuild.yaml) | Backend API → Cloud Run Service |
+| [cloudbuild.indexer-worker-pool.yaml](../cloudbuild.indexer-worker-pool.yaml) | Indexer → Cloud Run Worker Pool |
+| [cloudbuild.backend-dashboard.yaml](../cloudbuild.backend-dashboard.yaml) | Backend API only (legacy filename) |
 | [apps/backend/Dockerfile](../apps/backend/Dockerfile) | API + Alembic on start |
-| [apps/indexer/Dockerfile](../apps/indexer/Dockerfile) | Always-on indexer worker |
+| [apps/indexer/Dockerfile](../apps/indexer/Dockerfile) | Indexer worker image |
 
 Local Docker Compose (optional): [docker-compose.yml](../docker-compose.yml)

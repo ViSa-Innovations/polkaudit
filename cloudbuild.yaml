@@ -1,6 +1,7 @@
-# PolkAudit — Cloud Build: Backend API + Indexer → Cloud Run
+# PolkAudit — Cloud Build: Backend API → Cloud Run (Service)
 #
-# UI: apps/frontend on Vercel (not deployed here).
+# Indexer: separate trigger → cloudbuild.indexer-worker-pool.yaml
+# UI: apps/frontend on Vercel.
 #
 # Prerequisites (one-time): see docs/GCP_CLOUD_BUILD.md
 #   - Artifact Registry repo (default: shared `apps` in us-central1)
@@ -10,29 +11,20 @@
 #   _REGION          e.g. us-central1
 #   _AR_REPO         e.g. apps (shared Artifact Registry repo)
 #   _BACKEND_IMAGE   e.g. polkaudit-backend
-#   _INDEXER_IMAGE   e.g. polkaudit-indexer
-#
-# Cost note: indexer uses min-instances=1 + no CPU throttling (always-on worker).
 
 substitutions:
   _REGION: us-central1
   _AR_REPO: apps
   _BACKEND_IMAGE: polkaudit-backend
   _BACKEND_SERVICE: polkaudit-backend
-  _INDEXER_IMAGE: polkaudit-indexer
-  _INDEXER_SERVICE: polkaudit-indexer
 
 options:
   logging: CLOUD_LOGGING_ONLY
 
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_BACKEND_IMAGE}:${SHORT_SHA}
-  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}:${SHORT_SHA}
 
 steps:
-  # ---------------------------------------------------------------------------
-  # Backend
-  # ---------------------------------------------------------------------------
   - id: build-backend
     name: gcr.io/cloud-builders/docker
     args:
@@ -74,63 +66,16 @@ steps:
       - --set-env-vars=LOG_LEVEL=INFO
     waitFor: [push-backend]
 
-  # ---------------------------------------------------------------------------
-  # Indexer (long-running worker; keep warm, no CPU throttling)
-  # ---------------------------------------------------------------------------
-  - id: build-indexer
-    name: gcr.io/cloud-builders/docker
-    args:
-      - build
-      - -t
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}:${SHORT_SHA}
-      - -t
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}:latest
-      - -f
-      - apps/indexer/Dockerfile
-      - apps/indexer
-
-  - id: push-indexer
-    name: gcr.io/cloud-builders/docker
-    args:
-      - push
-      - --all-tags
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}
-    waitFor: [build-indexer]
-
-  - id: deploy-indexer
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: gcloud
-    args:
-      - run
-      - deploy
-      - ${_INDEXER_SERVICE}
-      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}:${SHORT_SHA}
-      - --region=${_REGION}
-      - --platform=managed
-      - --no-allow-unauthenticated
-      - --port=8080
-      - --cpu=1
-      - --memory=1Gi
-      - --min-instances=1
-      - --max-instances=1
-      - --no-cpu-throttling
-      - --timeout=3600
-      - --set-secrets=DATABASE_URL=polkaudit-database-url:latest
-      - --set-env-vars=LOG_LEVEL=INFO,INDEXER_CATCHUP_WINDOW=500,RETRY_DELAY_SECONDS=2,SUBSTRATE_RPC_URL=wss://rpc.polkadot.io
-    waitFor: [push-indexer, deploy-backend]
-
   - id: summary
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
       - -c
       - |
-        echo "=== PolkAudit backend + indexer deployed ==="
-        for SVC in ${_BACKEND_SERVICE} ${_INDEXER_SERVICE}; do
-          URL=$$(gcloud run services describe "$$SVC" \
-            --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo "n/a")
-          echo "  $$SVC: $$URL"
-        done
-        echo "  Point apps/frontend (Vercel) at backend URL /api/v1"
-        echo "  Indexer is private (IAM); no public browser access needed."
-    waitFor: [deploy-indexer]
+        echo "=== PolkAudit backend deployed ==="
+        URL=$$(gcloud run services describe ${_BACKEND_SERVICE} \
+          --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo "n/a")
+        echo "  ${_BACKEND_SERVICE}: $$URL"
+        echo "  Point apps/frontend (Vercel) at: $$URL/api/v1"
+        echo "  Indexer: use trigger with cloudbuild.indexer-worker-pool.yaml"
+    waitFor: [deploy-backend]

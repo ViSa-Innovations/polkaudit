@@ -264,14 +264,18 @@ Env reference: [env.hybrid.example](env.hybrid.example)
 
 ---
 
-## GCP Cloud Build → Cloud Run (backend + indexer)
+## GCP Cloud Build → Cloud Run
 
-Deploy **backend + indexer** on Cloud Run (indexer uses `min-instances=1` — ongoing cost):
+- **Backend Service:** `cloudbuild.yaml`
+- **Indexer Worker Pool:** `cloudbuild.indexer-worker-pool.yaml` (separate trigger)
 
 See **[docs/GCP_CLOUD_BUILD.md](docs/GCP_CLOUD_BUILD.md)**.
 
 ```bash
 gcloud builds submit --config=cloudbuild.yaml \
+  --substitutions=_REGION=us-central1,_AR_REPO=apps
+
+gcloud builds submit --config=cloudbuild.indexer-worker-pool.yaml \
   --substitutions=_REGION=us-central1,_AR_REPO=apps
 ```
 

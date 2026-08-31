@@ -1,0 +1,90 @@
+# PolkAudit — Cloud Build: Indexer → Cloud Run Worker Pool
+#
+# Separate trigger from cloudbuild.yaml (backend Service).
+# Worker pools are for always-on background work (no public URL / port required).
+#
+# Prerequisites (one-time): see docs/GCP_CLOUD_BUILD.md
+#   - Artifact Registry repo (default: shared `apps` in us-central1)
+#   - Secret Manager: polkaudit-database-url
+#   - Backend migrations already applied (indexer does not run Alembic)
+#
+# IMPORTANT — name conflict:
+#   Worker pool names must NOT match an existing Cloud Run *Service* name.
+#   If you previously deployed a Service named polkaudit-indexer, delete or
+#   rename that Service before deploying this worker pool, or set
+#   _INDEXER_WORKER_POOL to a different name (e.g. polkaudit-indexer-wp).
+#
+# Trigger substitutions (override in Cloud Build trigger UI):
+#   _REGION               e.g. us-central1
+#   _AR_REPO              e.g. apps
+#   _INDEXER_IMAGE        e.g. polkaudit-indexer
+#   _INDEXER_WORKER_POOL  e.g. polkaudit-indexer
+#   _INDEXER_INSTANCES    e.g. 1  (keep at 1 — do not run duplicate indexers)
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: apps
+  _INDEXER_IMAGE: polkaudit-indexer
+  _INDEXER_WORKER_POOL: polkaudit-indexer
+  _INDEXER_INSTANCES: "1"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}:${SHORT_SHA}
+
+steps:
+  - id: build-indexer
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}:${SHORT_SHA}
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}:latest
+      - -f
+      - apps/indexer/Dockerfile
+      - apps/indexer
+
+  - id: push-indexer
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}
+    waitFor: [build-indexer]
+
+  - id: deploy-indexer-worker-pool
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - worker-pools
+      - deploy
+      - ${_INDEXER_WORKER_POOL}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_INDEXER_IMAGE}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --instances=${_INDEXER_INSTANCES}
+      - --cpu=1
+      - --memory=1Gi
+      - --set-secrets=DATABASE_URL=polkaudit-database-url:latest
+      - --set-env-vars=LOG_LEVEL=INFO,INDEXER_CATCHUP_WINDOW=500,RETRY_DELAY_SECONDS=2,SUBSTRATE_RPC_URL=wss://rpc.polkadot.io
+      - --quiet
+    waitFor: [push-indexer]
+
+  - id: summary
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        echo "=== PolkAudit indexer worker pool deployed ==="
+        gcloud run worker-pools describe ${_INDEXER_WORKER_POOL} \
+          --region=${_REGION} \
+          --format='yaml(name,status.observedGeneration,template.scaling)' 2>/dev/null \
+          || echo "  describe failed (pool may still be provisioning)"
+        echo "  Worker pool: ${_INDEXER_WORKER_POOL} (region ${_REGION}, instances=${_INDEXER_INSTANCES})"
+        echo "  No public URL — check Cloud Run → Worker pools → Logs"
+        echo "  Keep instances=1 so only one indexer writes to Neon"
+    waitFor: [deploy-indexer-worker-pool]
